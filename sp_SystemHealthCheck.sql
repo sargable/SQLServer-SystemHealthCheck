@@ -1,4 +1,12 @@
-CREATE procedure [dbo].[sp_SystemHealthCheck]
+USE [master]
+GO
+/****** Object:  StoredProcedure [dbo].[sp_SystemHealthCheck]    Script Date: 11/6/2022 11:37:47 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+ALTER procedure [dbo].[sp_SystemHealthCheck]
 	@system_health_session_file varchar(512) = null,
 	@always_on_session_file varchar(512) = null,
 	@object_name nvarchar(128) = 'sp_server_diagnostics_component_result',
@@ -8,21 +16,18 @@ CREATE procedure [dbo].[sp_SystemHealthCheck]
 	@store_in_database varchar(255) = null,
 	@retention_days int = 30
 as
+
 /*
 MIT License
-
 Copyright (c) 2022 Sargable Group Ltd https://sargable.com
-
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
-
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
-
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -293,34 +298,61 @@ begin
 	/* AlwaysOn Health */
 	begin
 		if object_id('tempdb..##hadr_db_partner_set_sync_state') is not null
-			drop table ##hadr_db_partner_set_sync_state
+			begin
+				truncate table ##alwayson_ddl_executed
+			end
+		else
+			begin
+				create table ##hadr_db_partner_set_sync_state (event_data xml);
+			end
 
-		select
-			event_data = convert(xml, event_data)
-		into ##hadr_db_partner_set_sync_state
-		from sys.fn_xe_file_target_read_file(@always_on_session_path, null, null, null)
-		where object_name = 'hadr_db_partner_set_sync_state'
-		and convert(datetime,substring(event_data,PATINDEX('%timestamp%',event_data)+len('timestamp="'),24)) between @date_from and @date_to
+		if @always_on_session_path is not null
+			begin
+				insert into  ##hadr_db_partner_set_sync_state (event_data)
+				select
+					event_data = convert(xml, event_data)
+				from sys.fn_xe_file_target_read_file(@always_on_session_path, null, null, null)
+				where object_name = 'hadr_db_partner_set_sync_state'
+				and convert(datetime,substring(event_data,PATINDEX('%timestamp%',event_data)+len('timestamp="'),24)) between @date_from and @date_to
+			end
 	
 		if object_id('tempdb..##alwayson_ddl_executed') is not null
-			drop table ##alwayson_ddl_executed
+			begin 
+				truncate table ##alwayson_ddl_executed;
+			end
+		else
+			begin
+				create table ##alwayson_ddl_executed (event_data xml);
+			end;
 
-		select 
-			event_data = convert(xml, event_data)
-		into ##alwayson_ddl_executed
-		from sys.fn_xe_file_target_read_file(@always_on_session_path, null, null, null)
-		where object_name = 'alwayson_ddl_executed'
-		and convert(datetime,substring(event_data,PATINDEX('%timestamp%',event_data)+len('timestamp="'),24)) between @date_from and @date_to
+		if @always_on_session_path is not null
+			begin
+				insert into ##alwayson_ddl_executed (event_data)
+				select 
+					event_data = convert(xml, event_data)
+				from sys.fn_xe_file_target_read_file(@always_on_session_path, null, null, null)
+				where object_name = 'alwayson_ddl_executed'
+				and convert(datetime,substring(event_data,PATINDEX('%timestamp%',event_data)+len('timestamp="'),24)) between @date_from and @date_to
+			end
 
 		if object_id('tempdb..##alwayson_error_reported') is not null
-			drop table ##alwayson_error_reported
+			begin
+				truncate table ##alwayson_error_reported;
+			end
+		else
+			begin
+				create table ##alwayson_error_reported (event_data xml)
+			end
 
-		select 
-			event_data = convert(xml, event_data)
-		into ##alwayson_error_reported
-		from sys.fn_xe_file_target_read_file(@always_on_session_path, null, null, null)
-		where object_name = 'error_reported'
-		and convert(datetime,substring(event_data,PATINDEX('%timestamp%',event_data)+len('timestamp="'),24)) between @date_from and @date_to
+		if @always_on_session_path is not null
+			begin
+				insert into ##alwayson_error_reported (event_data)
+				select 
+					event_data = convert(xml, event_data)
+				from sys.fn_xe_file_target_read_file(@always_on_session_path, null, null, null)
+				where object_name = 'error_reported'
+				and convert(datetime,substring(event_data,PATINDEX('%timestamp%',event_data)+len('timestamp="'),24)) between @date_from and @date_to
+			end
 	end
 
 	/* System Health */
